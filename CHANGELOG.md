@@ -7,6 +7,21 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
 ### Added
 - **Scaffold + `cargo_check` tracer-bullet** (`work/exec-01-scaffold-cargo-check`).
+- **Tool `cargo_build`** (`work/exec-02-cargo-build`).
+  - New `exec::runner::run_cargo` shared by `cargo_check` and `cargo_build`;
+    `cargo_check` behaviour unchanged.
+  - `cargo_build` reuses `exec::parser::parse_cargo_stream` (no new parser) and
+    returns the same `{ok, diagnostics:[{level,code,file,line,message}], summary}`
+    schema.
+  - `release` → `--release`; `features` → `--features <csv>` (single argv
+    elements, never string-interpolated).
+  - `build` added to the allow-list alongside `check`; non-allow-listed
+    subcommands are rejected.
+  - `tools/list` advertises `cargo_build` with schema
+    `{repo_path(req), release?, features?}`.
+  - Tests in `tests/handler_tests.rs`: tool advertisement + schema, integration
+    via `handler::dispatch` (clean repo → `ok:true`; broken repo → `ok:false`
+    + error diagnostic), `build_args` argv construction, allow-list rejection.
 
 ### Changed
 - **`exec::runner` — sync timeout on `cargo check`** (`work/exec-01b-cargo-check-review-fixes`).

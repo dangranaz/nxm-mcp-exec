@@ -15,9 +15,9 @@ tipata** invece del log grezzo.
 
 ## Status
 
-Tracer-bullet: a single working tool, **`cargo_check`**, over **stdio**
-JSON-RPC. Build/test/clippy/fmt and a GO/NO-GO `run_gate` are later micro-tasks.
-HTTP transport is also a later step.
+Tracer-bullet: two working tools, **`cargo_check`** and **`cargo_build`**, over
+**stdio** JSON-RPC. Build/test/clippy/fmt and a GO/NO-GO `run_gate` are later
+micro-tasks. HTTP transport is also a later step.
 
 ## Tool: `cargo_check`
 
@@ -46,12 +46,39 @@ cargo_check {
 
 Warnings alone keep `ok: true`.
 
+## Tool: `cargo_build`
+
+Runs `cargo build --message-format=json` in `repo_path` and parses the JSON
+stream into the same typed diagnostics as `cargo_check`.
+
+```jsonc
+cargo_build {
+  "repo_path": "string",   // REQUIRED: target repo dir (must contain Cargo.toml)
+  "release":  false,        // optional: --release
+  "features": []            // optional: --features <csv>
+}
+// →
+{
+  "ok": false,
+  "diagnostics": [ ... ],
+  "summary": { "errors": 1, "warnings": 0 }
+}
+```
+
+`cargo build` is synchronous with the same configurable timeout (default 120s).
+`release` is passed as `--release`; `features` as `--features <csv>`. Each
+argument is a single argv element, never string-interpolated.
+
+Build writes only to `target/` (expected and inside the repo), so it is
+read-only in spirit.
+
 ## Security
 
-- Only the single allow-listed command `cargo check` is ever spawned. There is
-  **no arbitrary shell**: arguments are built from a typed struct.
-- The command runs in the caller-provided `repo_path` and is **read-only** on
-  the source.
+- Only the allow-listed program `cargo` with subcommands `check` or `build` is
+  ever spawned. There is **no arbitrary shell**: arguments are built from typed
+  structs.
+- The command runs in the caller-provided `repo_path`. `cargo check` is
+  read-only on the source; `cargo build` writes only to `target/`.
 
 ## Transport
 

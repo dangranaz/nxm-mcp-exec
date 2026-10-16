@@ -10,7 +10,7 @@
 
 use serde_json::{json, Value};
 
-use crate::exec::runner::{cargo_check, CargoCheckArgs};
+use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
 use crate::protocol::{codes, JsonRpcRequest, JsonRpcResponse};
 
 /// MCP protocol version this server implements.
@@ -85,6 +85,33 @@ pub fn tools_list_result() -> Value {
                     },
                     "required": ["repo_path"]
                 }
+            },
+            {
+                "name": "cargo_build",
+                "description": "Run `cargo build --message-format=json` in a target Rust repo and return \
+    structured, typed diagnostics instead of raw log text: {ok, diagnostics:[{level,code,file,line,message}], summary}. \
+    `code`, `file` and `line` are always present (`null` when absent) for a stable contract. \
+    `release` passes `--release`; `features` passes `--features <csv>`. Read-only in spirit \
+    (build writes only to `target/`); only the allow-listed `cargo build` command is ever executed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "Target repo directory (MUST exist and contain a Cargo.toml)."
+                        },
+                        "release": {
+                            "type": "boolean",
+                            "description": "Optional: build in release mode (`--release`)."
+                        },
+                        "features": {
+                            "type": "array",
+                            "description": "Optional: features to enable, passed as `--features <csv>`.",
+                            "items": { "type": "string" }
+                        }
+                    },
+                    "required": ["repo_path"]
+                }
             }
         ]
     })
@@ -102,6 +129,7 @@ fn handle_tools_call(id: Option<Value>, params: &Value) -> JsonRpcResponse {
 
     let result = match name {
         "cargo_check" => tool_cargo_check(&args),
+        "cargo_build" => tool_cargo_build(&args),
         other => Err(format!("unknown tool: {other}")),
     };
 
@@ -130,6 +158,37 @@ fn tool_cargo_check(args: &Value) -> Result<Value, String> {
     };
 
     let outcome = cargo_check(&check_args).map_err(|e| format!("{e:#}"))?;
+    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
+}
+
+/// Run the `cargo_build` tool and return its typed outcome as JSON.
+///
+/// Esegue il tool `cargo_build` e ritorna l'esito tipato come JSON.
+fn tool_cargo_build(args: &Value) -> Result<Value, String> {
+    let repo_path = require_str(args, "repo_path")?;
+    let release = args
+        .get("release")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let features = args
+        .get("features")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    let build_args = CargoBuildArgs {
+        repo_path: repo_path.into(),
+        release,
+        features,
+        timeout: None, // default 120s; per-call override is a later micro-task
+    };
+
+    let outcome = cargo_build(&build_args).map_err(|e| format!("{e:#}"))?;
     serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
 }
 
