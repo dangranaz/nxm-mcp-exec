@@ -34,11 +34,15 @@ cargo_check {
 {
   "ok": false,              // true iff there are no error-level diagnostics
   "diagnostics": [
-    { "level": "error", "code": "E0432", "file": "src/main.rs", "line": 12, "message": "unresolved import `foo`" }
+    { "level": "error", "code": "E0432", "file": "src/main.rs", "line": 12, "message": "unresolved import `foo`" },
+    { "level": "warning", "code": null, "file": null, "line": null, "message": "unused variable `x`" }
   ],
-  "summary": { "errors": 1, "warnings": 0 }
+  "summary": { "errors": 1, "warnings": 1 }
 }
 ```
+
+`cargo check` is synchronous with a configurable timeout (default 120s). A stuck
+`cargo` process is killed and reported as a typed error — it never hangs the server.
 
 Warnings alone keep `ok: true`.
 

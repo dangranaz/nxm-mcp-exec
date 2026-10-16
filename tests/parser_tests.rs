@@ -7,6 +7,7 @@
 //! flattened diagnostic fields.
 
 use nxm_mcp_exec::exec::parser::{parse_cargo_stream, Level};
+use serde_json::Value;
 
 /// A `compiler-message` line carrying an error with a primary span.
 const ERROR_LINE: &str = r#"{"reason":"compiler-message","message":{"message":"unresolved import `foo`","level":"error","code":{"code":"E0432"},"spans":[{"file_name":"src/main.rs","line_start":12,"is_primary":true}]}}"#;
@@ -90,4 +91,20 @@ fn note_and_help_levels_are_skipped() {
     let out = parse_cargo_stream(&format!("{note}\n{help}"));
     assert!(out.ok);
     assert!(out.diagnostics.is_empty());
+}
+
+#[test]
+fn diagnostic_without_code_or_span_emits_null_fields() {
+    // No `code` and no primary span: all three optional fields are None, and
+    // the policy requires them to be emitted as `null` (keys always present).
+    let line = r#"{"reason":"compiler-message","message":{"message":"bare warning","level":"warning","spans":[]}}"#;
+    let out = parse_cargo_stream(line);
+    assert_eq!(out.diagnostics.len(), 1);
+
+    let value = serde_json::to_value(&out.diagnostics[0]).expect("diagnostic serializes");
+    assert_eq!(value["code"], Value::Null, "code must be emitted as null");
+    assert_eq!(value["file"], Value::Null, "file must be emitted as null");
+    assert_eq!(value["line"], Value::Null, "line must be emitted as null");
+    assert_eq!(value["level"], "warning");
+    assert_eq!(value["message"], "bare warning");
 }

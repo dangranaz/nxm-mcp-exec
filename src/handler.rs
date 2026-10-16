@@ -62,8 +62,11 @@ pub fn tools_list_result() -> Value {
             {
                 "name": "cargo_check",
                 "description": "Run `cargo check --message-format=json` in a target Rust repo and return \
-structured, typed diagnostics instead of raw log text: {ok, diagnostics:[{level,code,file,line,message}], summary}. \
-Read-only on the source; only the allow-listed `cargo check` command is ever executed.",
+    structured, typed diagnostics instead of raw log text: {ok, diagnostics:[{level,code,file,line,message}], summary}. \
+    `code`, `file` and `line` are always present (`null` when absent) for a stable contract. \
+    The command is sync with a configurable timeout (default 120s); a stuck `cargo` is killed \
+    and reported as a typed error. Read-only on the source; only the allow-listed `cargo check` \
+    command is ever executed.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -123,6 +126,7 @@ fn tool_cargo_check(args: &Value) -> Result<Value, String> {
         repo_path: repo_path.into(),
         crate_name,
         workspace,
+        timeout: None, // default 120s; per-call override is a later micro-task
     };
 
     let outcome = cargo_check(&check_args).map_err(|e| format!("{e:#}"))?;
@@ -142,8 +146,7 @@ fn require_str(args: &Value, key: &str) -> Result<String, String> {
 /// The outcome is serialized as pretty JSON so a human reading the transcript
 /// can see it, while remaining valid for programmatic re-parsing.
 fn tool_json_result(outcome: &Value) -> Value {
-    let text = serde_json::to_string_pretty(outcome)
-        .unwrap_or_else(|_| outcome.to_string());
+    let text = serde_json::to_string_pretty(outcome).unwrap_or_else(|_| outcome.to_string());
     json!({
         "content": [ { "type": "text", "text": text } ],
         "structuredContent": outcome,

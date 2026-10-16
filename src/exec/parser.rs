@@ -35,13 +35,19 @@ pub struct Diagnostic {
     /// `"error"` or `"warning"`.
     pub level: Level,
     /// Lint/error code such as `E0432` or `unused_variables`, when present.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    ///
+    /// Serialization policy: the key is ALWAYS emitted, with `null` when absent,
+    /// for a stable, predictable contract toward agents.
     pub code: Option<String>,
     /// Primary span file path, when the diagnostic has a primary span.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    ///
+    /// Serialization policy: the key is ALWAYS emitted, with `null` when absent,
+    /// for a stable, predictable contract toward agents.
     pub file: Option<String>,
     /// 1-based line of the primary span, when present.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    ///
+    /// Serialization policy: the key is ALWAYS emitted, with `null` when absent,
+    /// for a stable, predictable contract toward agents.
     pub line: Option<u32>,
     /// Human-readable message (the short `message`, not the rendered blob).
     pub message: String,

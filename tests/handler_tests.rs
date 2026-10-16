@@ -6,7 +6,11 @@ use nxm_mcp_exec::handler::{dispatch, tools_list_result};
 use nxm_mcp_exec::protocol::{codes, JsonRpcRequest};
 use serde_json::json;
 
-fn request(id: Option<serde_json::Value>, method: &str, params: serde_json::Value) -> JsonRpcRequest {
+fn request(
+    id: Option<serde_json::Value>,
+    method: &str,
+    params: serde_json::Value,
+) -> JsonRpcRequest {
     JsonRpcRequest {
         jsonrpc: Some("2.0".into()),
         id,
@@ -47,6 +51,22 @@ fn initialize_reports_server_name() {
     let resp = dispatch(&req).expect("response");
     let result = resp.result.expect("result");
     assert_eq!(result["serverInfo"]["name"], json!("nxm-mcp-exec"));
+}
+
+#[test]
+fn tools_list_describes_null_fields_policy_and_timeout() {
+    let v = tools_list_result();
+    let desc = v["tools"][0]["description"]
+        .as_str()
+        .expect("description is a string");
+    assert!(
+        desc.contains("null"),
+        "description must document the null-fields policy: {desc}"
+    );
+    assert!(
+        desc.contains("120s"),
+        "description must document the default timeout: {desc}"
+    );
 }
 
 #[test]
