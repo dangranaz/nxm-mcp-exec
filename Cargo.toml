@@ -1,0 +1,41 @@
+[package]
+name = "nxm-mcp-exec"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+description = "A small MCP server that runs allow-listed Rust toolchain commands and returns structured, typed diagnostics for coding agents."
+repository = "https://github.com/draco690456/nxm-mcp-exec"
+authors = ["Daniele Oddo"]
+keywords = ["mcp", "cargo", "diagnostics", "rust", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+# Keep the published crate lean: ship only what a consumer needs.
+include = [
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+]
+
+[[bin]]
+name = "nxm-mcp-exec"
+path = "src/main.rs"
+
+[lib]
+name = "nxm_mcp_exec"
+path = "src/lib.rs"
+
+[dependencies]
+# Serialization (JSON-RPC messages + cargo --message-format=json stream)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Error handling: no unwrap/expect in production (RULES.md).
+anyhow = "1"
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
