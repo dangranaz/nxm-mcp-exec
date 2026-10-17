@@ -22,6 +22,20 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
   - Tests in `tests/handler_tests.rs`: tool advertisement + schema, integration
     via `handler::dispatch` (clean repo → `ok:true`; broken repo → `ok:false`
     + error diagnostic), `build_args` argv construction, allow-list rejection.
+- **Pure parser `exec::test_parser` for libtest JSON output** (`work/exec-03a-libtest-parser`).
+  - Public types `TestOutcome { passed, failed, ignored, failures }` and
+    `TestFailure { name, message }`, both serializable.
+  - `parse_libtest_stream` converts a libtest JSON stream into a `TestOutcome`.
+  - Defensive: non-JSON/blank lines skipped, unknown event types ignored, no
+    panic on format drift.
+  - Failure `message` = first non-empty line of the event's `stdout` (never the
+    whole dump), falling back to the `message` field.
+  - Counts derive from individual `test` events; the `suite` event is read but
+    does not override them.
+  - No process execution, no runner/handler wiring (that is `exec-03b`).
+  - Tests in `tests/test_parser_tests.rs`: serialized shape, all-green suite,
+    failure extraction, ignored counting, noise robustness, count consistency,
+    empty stream.
 
 ### Changed
 - **`exec::runner` — sync timeout on `cargo check`** (`work/exec-01b-cargo-check-review-fixes`).

@@ -3,3 +3,6 @@ Cargo.lock.orig
 # Work-local, non-versioned folders (RULES.md § Cartelle di lavoro)
 /sessions
 /prompts
+
+# Review artefacts (external review, not part of micro-tasks)
+REVIEW-*.md

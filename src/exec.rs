@@ -14,6 +14,8 @@
 
 pub mod parser;
 pub mod runner;
+pub mod test_parser;
 
 pub use parser::{parse_cargo_stream, CheckOutcome, Diagnostic, Summary};
 pub use runner::{cargo_check, CargoCheckArgs};
+pub use test_parser::{parse_libtest_stream, TestFailure, TestOutcome};
