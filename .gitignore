@@ -6,3 +6,6 @@ Cargo.lock.orig
 
 # Review artefacts (external review, not part of micro-tasks)
 REVIEW-*.md
+
+# Plan/review artefacts (external review, not versioned)
+/.pi

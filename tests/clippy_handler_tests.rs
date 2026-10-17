@@ -54,13 +54,17 @@ fn cargo_clippy_request(repo_path: &str, deny_warnings: Option<bool>) -> JsonRpc
     if let Some(deny) = deny_warnings {
         arguments["deny_warnings"] = json!(deny);
     }
-    request(Some(json!(3)), "tools/call", json!({ "name": "cargo_clippy", "arguments": arguments }))
+    request(
+        Some(json!(3)),
+        "tools/call",
+        json!({ "name": "cargo_clippy", "arguments": arguments }),
+    )
 }
 
 fn write_clippy_lint_repo(dir: &TempDir) {
     // `assert!(true)` triggers clippy::assertions_on_constants (warning-level,
     // no rustc warning, no compile error): a warnings-only fixture.
-    write_cargo_repo(&dir, "fn main() {\n    assert!(true);\n}\n");
+    write_cargo_repo(dir, "fn main() {\n    assert!(true);\n}\n");
 }
 
 #[test]

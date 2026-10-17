@@ -145,7 +145,9 @@ fn cargo_test_graceful_skip_when_no_backend() {
 
     assert_eq!(result["isError"], json!(true));
     assert!(
-        err_text.contains("backend") || err_text.contains("nextest") || err_text.contains("nightly"),
+        err_text.contains("backend")
+            || err_text.contains("nextest")
+            || err_text.contains("nightly"),
         "error message must mention the missing backend: {err_text}"
     );
 }

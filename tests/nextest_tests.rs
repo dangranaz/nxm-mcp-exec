@@ -103,7 +103,9 @@ fn nextest_command_spec_uses_libtest_json_flag_before_double_dash() {
 
     let spec = nextest_command_spec(&args).expect("spec is buildable");
 
-    assert!(spec.args.starts_with(&["nextest".to_string(), "run".to_string()]));
+    assert!(spec
+        .args
+        .starts_with(&["nextest".to_string(), "run".to_string()]));
     let fmt_pos = spec
         .args
         .iter()
@@ -115,7 +117,8 @@ fn nextest_command_spec_uses_libtest_json_flag_before_double_dash() {
         spec.args
     );
     assert_eq!(
-        spec.args[fmt_pos + 1], "libtest-json",
+        spec.args[fmt_pos + 1],
+        "libtest-json",
         "`--message-format` must take `libtest-json` as its value: {:?}",
         spec.args
     );

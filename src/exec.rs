@@ -22,8 +22,8 @@ pub mod test_runner;
 
 pub use cargo_runner::{is_allowed_subcommand, run_cargo, wait_with_timeout, DEFAULT_TIMEOUT};
 pub use clippy_runner::{cargo_clippy, ClippyArgs};
+pub use nextest_runner::{nextest_command_spec, run_nextest, NextestCommandSpec};
 pub use parser::{parse_cargo_stream, CheckOutcome, Diagnostic, Summary};
 pub use runner::{cargo_check, CargoCheckArgs};
 pub use test_parser::{parse_libtest_stream, TestFailure, TestOutcome};
-pub use nextest_runner::{nextest_command_spec, run_nextest, NextestCommandSpec};
 pub use test_runner::{cargo_test, CargoTestArgs};
