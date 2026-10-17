@@ -17,6 +17,7 @@ use serde_json::Value;
 
 use crate::exec::clippy_runner::{cargo_clippy, ClippyArgs};
 use crate::exec::fmt_runner::{cargo_fmt_check, FmtArgs};
+use crate::exec::gate_runner::run_gate;
 use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
 use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 
@@ -41,6 +42,7 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
         "cargo_test" => tool_cargo_test(args),
         "cargo_clippy" => tool_cargo_clippy(args),
         "cargo_fmt_check" => tool_cargo_fmt_check(args),
+        "run_gate" => tool_run_gate(args),
         other => Err(format!("unknown tool: {other}")),
     }
 }
@@ -159,6 +161,31 @@ fn tool_cargo_clippy(args: &Value) -> Result<Value, String> {
     };
 
     let outcome = cargo_clippy(&clippy_args).map_err(|e| format!("{e:#}"))?;
+    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
+}
+
+/// Run the `run_gate` tool and return its typed verdict as JSON.
+///
+/// Esegue il tool `run_gate` e ritorna il verdetto tipato come JSON.
+///
+/// `gate_name` is optional and defaults to `"default"` (documented order:
+/// check → clippy → fmt_check → test). The gate short-circuits at the first
+/// failed step: `steps` contains only the executed steps and `failed_step`
+/// names the first failure (`null` on GO).
+///
+/// `gate_name` è opzionale e di default è `"default"` (ordine documentato:
+/// check → clippy → fmt_check → test). Il gate fa short-circuit al primo
+/// step fallito: `steps` contiene solo gli step eseguiti e `failed_step`
+/// nomina il primo fallimento (`null` su GO).
+fn tool_run_gate(args: &Value) -> Result<Value, String> {
+    let repo_path = require_str(args, "repo_path")?;
+    let gate_name = args
+        .get("gate_name")
+        .and_then(Value::as_str)
+        .unwrap_or("default");
+
+    let outcome =
+        run_gate(std::path::Path::new(&repo_path), gate_name).map_err(|e| format!("{e:#}"))?;
     serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
 }
 

@@ -161,6 +161,28 @@ pub fn tools_list_result() -> Value {
                 }
             },
             {
+                "name": "run_gate",
+                "description": "Run the named quality gate (default: `check → clippy → fmt_check → test`) \
+    in a target Rust repo and return {verdict: \"GO\"|\"NO-GO\", failed_step, steps:[{name, ok}]}. \
+    Short-circuit: at the first failed step the sequence stops, later steps are NOT executed \
+    (they are absent from `steps`) and the verdict is \"NO-GO\" with `failed_step` naming that step. \
+    Composes the existing tools; it never re-implements them. `gate_name` is optional (default gate).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "Target repo directory (MUST exist and contain a Cargo.toml)."
+                        },
+                        "gate_name": {
+                            "type": "string",
+                            "description": "Optional gate name; `default` runs check → clippy → fmt_check → test."
+                        }
+                    },
+                    "required": ["repo_path"]
+                }
+            },
+            {
                 "name": "cargo_test",
                 "description": "Run `cargo test --format=json` in a target Rust repo and return \
     structured, typed test results: {passed, failed, ignored, failures:[{name,message}]}. \

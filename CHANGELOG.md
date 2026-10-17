@@ -27,6 +27,25 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
   - Tests: `tests/clippy_handler_tests.rs` (tool advertisement + schema,
     integration on a real lint fixture, `deny_warnings` flip with mutation
     check, clean repo) + allow-list coverage in `tests/handler_tests.rs`.
+- **Tool `run_gate`** (`work/exec-06-run-gate`).
+  - `tools/list` advertises `run_gate` with schema `{repo_path(req), gate_name?}`.
+  - Pure orchestration over the EXISTING runners (no reimplementation): the
+    documented default gate `cargo_check → cargo_clippy → cargo_fmt_check →
+    cargo_test` (cheap correctness first, then lints, formatting, tests).
+    Resolved via `exec::gate_runner::gate_steps("default")`;
+    `DEFAULT_GATE` is the declared order.
+  - Short-circuit: at the first failed step (runner `ok == false` or typed
+    error, e.g. missing test backend) the sequence stops; `steps` contains
+    ONLY the executed steps and the verdict is `NO-GO` with `failed_step`
+    naming that step (`null` on `GO`). Verdict is a typed enum
+    (`GateVerdict::Go`/`NoGo` → `"GO"`/`"NO-GO"`); `cargo_test` steps pass
+    when zero tests fail (`failed == 0`).
+  - Tests: `tests/run_gate_tests.rs` (gate definition + unknown-gate rejection,
+    tools/list advertisement + schema, GO on a clean fixture in the declared
+    order, NO-GO short-circuit at the first step on a compile-error fixture,
+    NO-GO short-circuit at an intermediate step with later steps NOT executed,
+    unknown gate name → typed error).
+
 - **Tool `cargo_fmt_check`** (`work/exec-05-cargo-fmt-check`).
   - `fmt` added to the allow-list alongside `check`, `build`, `test`,
     `nextest` and `clippy`; `tools/list` advertises `cargo_fmt_check` with
