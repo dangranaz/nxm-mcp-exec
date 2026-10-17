@@ -57,10 +57,11 @@ pub fn cargo_bin() -> String {
 /// assert!(is_allowed_subcommand("check"));
 /// assert!(is_allowed_subcommand("build"));
 /// assert!(is_allowed_subcommand("test"));
+/// assert!(is_allowed_subcommand("nextest"));
 /// assert!(!is_allowed_subcommand("run"));
 /// ```
 pub fn is_allowed_subcommand(subcommand: &str) -> bool {
-    let allowed = matches!(subcommand, "check" | "build" | "test");
+    let allowed = matches!(subcommand, "check" | "build" | "test" | "nextest");
     tracing::debug!(target: "nxm::exec::cargo_runner", subcommand, allowed, "checked allow-listed subcommand");
     allowed
 }
@@ -250,9 +251,7 @@ pub fn run_cargo(
     );
     let start = Instant::now();
     if !is_allowed_subcommand(subcommand) {
-        bail!(
-            "subcommand `{subcommand}` is not allow-listed (only `check`, `build` and `test`)"
-        );
+        bail!("subcommand `{subcommand}` is not allow-listed (only `check`, `build`, `test` and `nextest`)");
     }
     validate_repo_path(repo_path)?;
 
@@ -281,4 +280,3 @@ pub fn run_cargo(
 
     Ok(outcome)
 }
-

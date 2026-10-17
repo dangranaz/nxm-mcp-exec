@@ -1,9 +1,10 @@
-//! `cargo_test` execution: runs `cargo test --format=json` (nightly only) and
-//! feeds the libtest JSON stream to [`crate::exec::test_parser`].
+//! `cargo_test` execution: runs tests under the allow-list and returns a
+//! [`TestOutcome`], using `cargo-nextest` when available (stable, machine-readable)
+//! and falling back to the nightly libtest JSON path from exec-03b.
 //!
-//! Esecuzione di `cargo_test`: esegue `cargo test --format=json` (solo
-//! nightly) e alimenta lo stream JSON di libtest a
-//! [`crate::exec::test_parser`].
+//! Esecuzione di `cargo_test`: esegue i test sotto allow-list e ritorna un
+//! [`TestOutcome`], usando `cargo-nextest` quando disponibile (stable, output
+//! machine-readable) e ricadendo sul path nightly libtest JSON di exec-03b.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -12,9 +13,10 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 
 use super::cargo_runner::{
-    cargo_bin, cargo_exec, cargo_is_nightly, is_allowed_subcommand, validate_repo_path, DEFAULT_TIMEOUT,
+    cargo_bin, cargo_exec, cargo_is_nightly, is_allowed_subcommand, validate_repo_path,
+    DEFAULT_TIMEOUT,
 };
-use super::test_parser::{parse_libtest_stream, TestOutcome};
+use super::test_parser::{parse_libtest_stream, parse_nextest_stream, TestOutcome};
 
 use tracing;
 
@@ -48,13 +50,58 @@ pub struct CargoTestArgs {
     pub timeout: Option<Duration>,
 }
 
-/// Run `cargo test --format=json` (nightly only) in `args.repo_path` and feed
-/// the libtest JSON stream to [`parse_libtest_stream`], returning a
-/// [`TestOutcome`].
+/// Detect whether the `cargo-nextest` binary is available on `PATH`.
 ///
-/// Esegue `cargo test --format=json` (solo nightly) in `args.repo_path` e
-/// alimenta lo stream JSON di libtest a [`parse_libtest_stream`], ritornando
-/// un [`TestOutcome`].
+/// Rileva se il binario `cargo-nextest` è disponibile su `PATH`.
+///
+/// Returns `true` when `cargo nextest --version` succeeds and reports
+/// `nextest`; `false` otherwise.
+///
+/// Ritorna `true` quando `cargo nextest --version` ha successo e segnala
+/// `nextest`; `false` altrimenti.
+///
+/// # Example
+/// ```
+/// use nxm_mcp_exec::exec::test_runner::cargo_nextest_available;
+/// // Result depends on whether cargo-nextest is installed; no assertion on the value.
+/// let _ = cargo_nextest_available();
+/// ```
+pub fn cargo_nextest_available() -> bool {
+    let output = Command::new("cargo")
+        .arg("nextest")
+        .arg("--version")
+        .output();
+    let available = match output {
+        Ok(o) => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            o.status.success() && s.contains("nextest")
+        }
+        Err(_) => false,
+    };
+    tracing::debug!(target: "nxm::exec::test_runner", cargo_nextest_available = available, "detected cargo-nextest");
+    available
+}
+
+/// Run `cargo test` in `args.repo_path` and return a [`TestOutcome`].
+///
+/// Esegue `cargo test` in `args.repo_path` e ritorna un [`TestOutcome`].
+///
+/// # Backend selection / Selezione del backend
+/// 1. If `cargo-nextest` is available, use `cargo nextest run --format json`
+///    (machine-readable, works on stable). Map its output via
+///    [`parse_nextest_stream`].
+/// 2. Else, if the toolchain is nightly, use `cargo test -Z unstable-options
+///    -- --format=json` and map via [`parse_libtest_stream`] (exec-03b path).
+/// 3. Else, return a typed error (graceful skip: no panic, no hang, no parsed
+///    human text).
+///
+/// 1. Se `cargo-nextest` è disponibile, usa `cargo nextest run --format json`
+///    (machine-readable, funziona su stable). Mappa l'output via
+///    [`parse_nextest_stream`].
+/// 2. Altrimenti, se la toolchain è nightly, usa `cargo test -Z unstable-options
+///    -- --format=json` e mappa via [`parse_libtest_stream`] (path exec-03b).
+/// 3. Altrimenti, ritorna un errore tipato (skip grazioso: no panic, no hang,
+///    no testo umano parsato).
 ///
 /// # Example
 /// ```
@@ -66,37 +113,109 @@ pub struct CargoTestArgs {
 ///     filter: None,
 ///     timeout: None,
 /// };
-/// // Requires a nightly toolchain; on stable, `cargo_test(&args)` returns a
+/// // On a machine without nextest or nightly, `cargo_test(&args)` returns a
 /// // typed error instead of panicking.
 /// assert_eq!(args.repo_path, PathBuf::from("."));
 /// ```
-///
-/// # Format stability / Stabilità del formato
-/// libtest `--format=json` is unstable and requires a nightly toolchain.
-/// Strategy: detect the toolchain via [`cargo_is_nightly`]; if not nightly,
-/// return a typed error (graceful skip, never a panic, never a hang, never
-/// parsed human text). If nightly but `--format=json` is rejected by cargo,
-/// the non-zero exit status is surfaced as a typed error too — never a fake
-/// "all passed" outcome.
-///
-/// libtest `--format=json` è instabile e richiede una toolchain nightly.
-/// Strategia: rilevare la toolchain via [`cargo_is_nightly`]; se non nightly,
-/// ritornare un errore tipato (skip grazioso, mai un panic, mai un hang, mai
-/// testo umano parsato). Se nightly ma `--format=json` viene rifiutato da
-/// cargo, lo status di uscita non-zero viene surfacciato come errore tipato —
-/// mai un falso "tutti passati".
 pub fn cargo_test(args: &CargoTestArgs) -> Result<TestOutcome> {
+    tracing::debug!(
+        target: "nxm::exec::test_runner",
+        repo = %args.repo_path.display(),
+        filter = ?args.filter,
+        "running cargo_test"
+    );
     if !is_allowed_subcommand("test") {
         bail!("subcommand `test` is not allow-listed");
     }
-    if !cargo_is_nightly() {
-        bail!(
-            "test JSON output requires a nightly toolchain (use `cargo +nightly`) \
-             or cargo-nextest; the current toolchain is stable and cannot emit libtest JSON"
-        );
-    }
     validate_repo_path(&args.repo_path)?;
 
+    if cargo_nextest_available() {
+        return cargo_test_via_nextest(args);
+    }
+
+    if cargo_is_nightly() {
+        return cargo_test_via_libtest_json(args);
+    }
+
+    bail!(
+        "no test JSON backend available: cargo-nextest is not installed and \
+         the toolchain is not nightly (cannot emit libtest JSON). \
+         Install cargo-nextest or use `cargo +nightly`."
+    );
+}
+
+/// Run `cargo test` via `cargo-nextest` (machine-readable JSON on stable).
+///
+/// Esegue `cargo test` via `cargo-nextest` (output JSON machine-readable su stable).
+fn cargo_test_via_nextest(args: &CargoTestArgs) -> Result<TestOutcome> {
+    // `-p <crate>` is a cargo-level flag: it precedes `run`.
+    let mut cargo_args = Vec::new();
+    if let Some(name) = &args.crate_name {
+        cargo_args.push("-p".to_string());
+        cargo_args.push(name.clone());
+    }
+
+    // `-- --format=json` is passed to nextest (after `--`).
+    // A test filter, if any, is also passed after `--` as a positional filter.
+    let mut nextest_args = Vec::new();
+    nextest_args.push("--format=json".to_string());
+    if let Some(filter) = &args.filter {
+        nextest_args.push(filter.clone());
+    }
+
+    let timeout = args.timeout.unwrap_or(DEFAULT_TIMEOUT);
+
+    let mut cmd = Command::new(cargo_bin());
+    cmd.current_dir(&args.repo_path).arg("nextest").arg("run");
+    for arg in &cargo_args {
+        cmd.arg(arg);
+    }
+    cmd.arg("--");
+    for arg in &nextest_args {
+        cmd.arg(arg);
+    }
+
+    tracing::debug!(
+        target: "nxm::exec",
+        repo = %args.repo_path.display(),
+        cargo_args = ?cargo_args,
+        nextest_args = ?nextest_args,
+        timeout = ?timeout,
+        "running cargo nextest run --format=json"
+    );
+
+    let (stdout_str, _status) = cargo_exec(&mut cmd, timeout)?;
+
+    // A non-zero exit status from nextest is NOT by itself an error: nextest
+    // exits with status 1 when tests fail, but still emits the JSON stream
+    // describing those failures. We therefore parse stdout regardless of the
+    // exit status — a fake "all passed" outcome is never returned.
+    //
+    // If nextest emitted no stdout, surface a typed error instead of parsing
+    // human text or returning a fake outcome.
+    if stdout_str.trim().is_empty() {
+        bail!("nextest JSON output is unavailable: cargo-nextest emitted no stdout");
+    }
+
+    let outcome = parse_nextest_stream(&stdout_str);
+
+    tracing::debug!(
+        target: "nxm::exec",
+        repo = %args.repo_path.display(),
+        passed = outcome.passed,
+        failed = outcome.failed,
+        ignored = outcome.ignored,
+        failures = outcome.failures.len(),
+        "cargo nextest finished"
+    );
+
+    Ok(outcome)
+}
+
+/// Run `cargo test` via nightly libtest JSON (exec-03b path).
+///
+/// Esegue `cargo test` via nightly libtest JSON (path exec-03b).
+fn cargo_test_via_libtest_json(args: &CargoTestArgs) -> Result<TestOutcome> {
     // `-p <crate>` is a cargo-level flag: it must precede `--` so cargo (not
     // libtest) consumes it as a package selector.
     let mut cargo_args = Vec::new();
@@ -165,7 +284,7 @@ pub fn cargo_test(args: &CargoTestArgs) -> Result<TestOutcome> {
         failed = outcome.failed,
         ignored = outcome.ignored,
         failures = outcome.failures.len(),
-        "cargo test finished"
+        "cargo test finished (nightly libtest JSON)"
     );
 
     Ok(outcome)

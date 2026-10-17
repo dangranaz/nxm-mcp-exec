@@ -10,8 +10,8 @@
 
 use serde_json::{json, Value};
 
-use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
+use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 use crate::protocol::{codes, JsonRpcRequest, JsonRpcResponse};
 
 /// MCP protocol version this server implements.

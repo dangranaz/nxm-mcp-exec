@@ -9,7 +9,7 @@
 //! [`crate::exec::cargo_runner`]; questo modulo espone i wrapper tipati per
 //! `cargo_check` e `cargo_build`.
 
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -17,7 +17,7 @@ use anyhow::Result;
 use tracing;
 
 pub use super::cargo_runner::{
-    run_cargo, wait_with_timeout, is_allowed_subcommand, DEFAULT_TIMEOUT,
+    is_allowed_subcommand, run_cargo, wait_with_timeout, DEFAULT_TIMEOUT,
 };
 use super::parser::CheckOutcome;
 

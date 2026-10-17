@@ -45,6 +45,21 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
   - Tests in `tests/test_parser_tests.rs`: serialized shape, all-green suite,
     failure extraction, ignored counting, noise robustness, count consistency,
     empty stream.
+- **`cargo-nextest` backend for `cargo_test`** (`work/exec-03c-cargo-test-nextest`).
+  - `nextest` added to the allow-list alongside `check`, `build` and `test`.
+  - New `exec::test_parser::parse_nextest_stream` for nextest `--format json`
+    output; defensive parsing of `{passed, failed, ignored}` events and failure
+    messages; `parse_libtest_stream` untouched.
+  - Backend selection strategy: `cargo-nextest` if available
+    (`cargo nextest run --format json`); else nightly libtest JSON (exec-03b
+    path); else typed graceful skip error (no panic, no hang, no human text).
+  - `cargo_test` parses stdout regardless of exit status (nextest exits 1 on
+    test failures but still emits JSON); empty stdout → typed error.
+  - `tools/list` advertises `cargo_test` with schema
+    `{repo_path(req), crate?, filter?}`.
+  - Tests in `tests/test_runner_tests.rs`: nextest output mapping fixture,
+    graceful skip when no backend available, green/red/filter integration tests
+    with explicit skip when nextest is absent.
 
 ### Changed
 - **`exec::runner` — sync timeout on `cargo check`** (`work/exec-01b-cargo-check-review-fixes`).
