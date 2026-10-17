@@ -183,9 +183,7 @@ fn cargo_build_broken_repo_is_error_with_diagnostics() {
     assert_eq!(result["isError"], json!(false));
     let sc = &result["structuredContent"];
     assert_eq!(sc["ok"], json!(false));
-    let diagnostics = sc["diagnostics"]
-        .as_array()
-        .expect("diagnostics is an array");
+    let diagnostics = sc["diagnostics"].as_array().expect("diagnostics is an array");
     assert!(!diagnostics.is_empty(), "expected at least one diagnostic");
     let d = &diagnostics[0];
     assert_eq!(d["level"], "error");

@@ -10,6 +10,7 @@
 
 use serde_json::{json, Value};
 
+use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
 use crate::protocol::{codes, JsonRpcRequest, JsonRpcResponse};
 
@@ -112,6 +113,33 @@ pub fn tools_list_result() -> Value {
                     },
                     "required": ["repo_path"]
                 }
+            },
+            {
+                "name": "cargo_test",
+                "description": "Run `cargo test --format=json` in a target Rust repo and return \
+    structured, typed test results: {passed, failed, ignored, failures:[{name,message}]}. \
+    `crate` passes `-p <crate>`; `filter` runs only matching tests. \
+    libtest JSON output requires a nightly toolchain (`cargo +nightly`); on a stable \
+    toolchain the tool returns a typed, readable error instead of parsing human text. \
+    Only the allow-listed `cargo test` command is ever executed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "Target repo directory (MUST exist and contain a Cargo.toml)."
+                        },
+                        "crate": {
+                            "type": "string",
+                            "description": "Optional package selector, passed as `-p <crate>`."
+                        },
+                        "filter": {
+                            "type": "string",
+                            "description": "Optional: run only tests matching this filter string."
+                        }
+                    },
+                    "required": ["repo_path"]
+                }
             }
         ]
     })
@@ -130,6 +158,7 @@ fn handle_tools_call(id: Option<Value>, params: &Value) -> JsonRpcResponse {
     let result = match name {
         "cargo_check" => tool_cargo_check(&args),
         "cargo_build" => tool_cargo_build(&args),
+        "cargo_test" => tool_cargo_test(&args),
         other => Err(format!("unknown tool: {other}")),
     };
 
@@ -189,6 +218,25 @@ fn tool_cargo_build(args: &Value) -> Result<Value, String> {
     };
 
     let outcome = cargo_build(&build_args).map_err(|e| format!("{e:#}"))?;
+    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
+}
+
+/// Run the `cargo_test` tool and return its typed outcome as JSON.
+///
+/// Esegue il tool `cargo_test` e ritorna l'esito tipato come JSON.
+fn tool_cargo_test(args: &Value) -> Result<Value, String> {
+    let repo_path = require_str(args, "repo_path")?;
+    let crate_name = args.get("crate").and_then(Value::as_str).map(String::from);
+    let filter = args.get("filter").and_then(Value::as_str).map(String::from);
+
+    let test_args = CargoTestArgs {
+        repo_path: repo_path.into(),
+        crate_name,
+        filter,
+        timeout: None, // default 120s; per-call override is a later micro-task
+    };
+
+    let outcome = cargo_test(&test_args).map_err(|e| format!("{e:#}"))?;
     serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
 }
 

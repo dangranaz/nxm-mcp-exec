@@ -23,6 +23,15 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
     via `handler::dispatch` (clean repo → `ok:true`; broken repo → `ok:false`
     + error diagnostic), `build_args` argv construction, allow-list rejection.
 - **Pure parser `exec::test_parser` for libtest JSON output** (`work/exec-03a-libtest-parser`).
+
+- **Tool `cargo_test`** (`work/exec-03b-cargo-test`).
+  - `test` added to the allow-list alongside `check` and `build`; `is_allowed_subcommand` covers all three.
+  - New `exec::runner::cargo_runner` module with shared process execution (`cargo_exec`, `wait_with_timeout`, `validate_repo_path`, `cargo_is_nightly`); `exec::runner` kept to `cargo_check`/`cargo_build` wrappers (all files ≤300 lines).
+  - `cargo_test` runs `cargo -Z unstable-options test -- --format=json` (nightly only) and feeds the stream to `exec::test_parser::parse_libtest_stream`, returning `{passed, failed, ignored, failures:[{name,message}]}`.
+  - `crate` → `-p <crate>`; `filter` → test filter argument (single argv, never interpolated).
+  - Format stability: `cargo_is_nightly()` detects the toolchain; on non-nightly, `cargo_test` returns a typed, readable error (graceful skip, no panic, no hang, no human-text parsing). `NXM_CARGO` env var overrides the cargo binary (testability hook).
+  - `tools/list` advertises `cargo_test` with schema `{repo_path(req), crate?, filter?}`.
+  - Tests in `tests/handler_tests.rs`: tool advertisement + schema, graceful skip on stable toolchain, integration tests (green/red/filter, ignored when nightly JSON format is unavailable).
   - Public types `TestOutcome { passed, failed, ignored, failures }` and
     `TestFailure { name, message }`, both serializable.
   - `parse_libtest_stream` converts a libtest JSON stream into a `TestOutcome`.

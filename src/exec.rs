@@ -12,10 +12,16 @@
 //! agent riceve `{ok, diagnostics:[...], summary}` invece di centinaia di
 //! righe di log in formato umano.
 
+pub mod cargo_runner;
 pub mod parser;
 pub mod runner;
 pub mod test_parser;
+pub mod test_runner;
 
+pub use cargo_runner::{
+    run_cargo, wait_with_timeout, is_allowed_subcommand, DEFAULT_TIMEOUT,
+};
 pub use parser::{parse_cargo_stream, CheckOutcome, Diagnostic, Summary};
 pub use runner::{cargo_check, CargoCheckArgs};
 pub use test_parser::{parse_libtest_stream, TestFailure, TestOutcome};
+pub use test_runner::{cargo_test, CargoTestArgs};
