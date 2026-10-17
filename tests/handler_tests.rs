@@ -230,6 +230,6 @@ fn run_cargo_rejects_non_allowlisted_subcommand() {
     );
     assert!(is_allowed_subcommand("check"));
     assert!(is_allowed_subcommand("build"));
+    assert!(is_allowed_subcommand("clippy"));
     assert!(!is_allowed_subcommand("run"));
-    assert!(!is_allowed_subcommand("clippy"));
 }

@@ -1,13 +1,14 @@
-//! Generic cargo command execution shared by `cargo_check`, `cargo_build` and
-//! `cargo_test`.
+//! Generic cargo command execution shared by `cargo_check`, `cargo_build`,
+//! `cargo_test` and `cargo_clippy`.
 //!
 //! Esecuzione generica di comandi cargo condivisa da `cargo_check`,
-//! `cargo_build` e `cargo_test`.
+//! `cargo_build`, `cargo_test` e `cargo_clippy`.
 //!
 //! Security (non-negotiable) / Sicurezza (non negoziabile):
 //! - Only the allow-listed program `cargo` with an allow-listed subcommand
-//!   (`check`, `build` or `test`) is ever spawned. There is NO arbitrary shell:
-//!   arguments are built from typed structs, never from free-form strings.
+//!   (`check`, `build`, `test`, `nextest` or `clippy`) is ever spawned. There is
+//!   NO arbitrary shell: arguments are built from typed structs, never from
+//!   free-form strings.
 //! - The command runs in the caller-provided `repo_path`.
 
 use std::io::Read;
@@ -58,10 +59,11 @@ pub fn cargo_bin() -> String {
 /// assert!(is_allowed_subcommand("build"));
 /// assert!(is_allowed_subcommand("test"));
 /// assert!(is_allowed_subcommand("nextest"));
+/// assert!(is_allowed_subcommand("clippy"));
 /// assert!(!is_allowed_subcommand("run"));
 /// ```
 pub fn is_allowed_subcommand(subcommand: &str) -> bool {
-    let allowed = matches!(subcommand, "check" | "build" | "test" | "nextest");
+    let allowed = matches!(subcommand, "check" | "build" | "test" | "nextest" | "clippy");
     tracing::debug!(target: "nxm::exec::cargo_runner", subcommand, allowed, "checked allow-listed subcommand");
     allowed
 }
@@ -251,7 +253,10 @@ pub fn run_cargo(
     );
     let start = Instant::now();
     if !is_allowed_subcommand(subcommand) {
-        bail!("subcommand `{subcommand}` is not allow-listed (only `check`, `build`, `test` and `nextest`)");
+        bail!(
+            "subcommand `{subcommand}` is not allow-listed (only `check`, `build`, \
+             `test`, `nextest` and `clippy`)"
+        );
     }
     validate_repo_path(repo_path)?;
 

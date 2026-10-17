@@ -9,8 +9,9 @@ agents. The cardinal value is the typed verdict
 (`{ok, diagnostics, summary}`), never raw log text.
 
 Scope grows micro-task by micro-task:
-`cargo_check` (this one) → `cargo_build` → `cargo_test` → `cargo_clippy` +
-`cargo_fmt_check` → `run_gate` (GO/NO-GO, short-circuit at first failure).
+`cargo_check` (this one) → `cargo_build` → `cargo_test` → `cargo_clippy`
+(done) → `cargo_fmt_check` → `run_gate` (GO/NO-GO, short-circuit at first
+failure).
 
 ## Non-negotiable decisions
 
@@ -31,8 +32,11 @@ Scope grows micro-task by micro-task:
 
 - `src/exec/parser.rs` — JSON stream → `CheckOutcome` (the core, test-first).
 - `src/exec/runner.rs` — spawn `cargo check` under the allow-list.
+- `src/exec/cargo_runner.rs` — shared cargo process execution + allow-list.
+- `src/exec/clippy_runner.rs` — `cargo_clippy` runner + `deny_warnings` policy.
 - `src/protocol.rs` — minimal JSON-RPC 2.0 types.
 - `src/handler.rs` — `initialize` / `tools/list` / `tools/call` + tool contract.
+- `src/tools.rs` — tool implementations: MCP args → typed runner calls.
 - `src/main.rs` — stdio read/dispatch/write loop.
 - `tests/` — parser + handler tests (RULES: tests never inline in `src/`).
 

@@ -3,16 +3,19 @@
 //! Gestione delle richieste MCP: `initialize`, `tools/list`, `tools/call`.
 //!
 //! The tool *interface* (names, input schema) lives here and is the public
-//! contract of this server. The actual work is delegated to [`crate::exec`].
+//! contract of this server. Tool *implementations* (argument parsing and
+//! invocation) live in [`crate::tools`]; the actual work is delegated to
+//! [`crate::exec`].
 //!
 //! L'*interfaccia* dei tool (nomi, schema di input) vive qui ed è il contratto
-//! pubblico di questo server. Il lavoro effettivo è delegato a [`crate::exec`].
+//! pubblico di questo server. Le *implementazioni* dei tool (parsing degli
+//! argomenti e invocazione) vivono in [`crate::tools`]; il lavoro effettivo è
+//! delegato a [`crate::exec`].
 
 use serde_json::{json, Value};
 
-use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
-use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 use crate::protocol::{codes, JsonRpcRequest, JsonRpcResponse};
+use crate::tools::run_tool;
 
 /// MCP protocol version this server implements.
 const PROTOCOL_VERSION: &str = "2025-06-18";
@@ -115,6 +118,31 @@ pub fn tools_list_result() -> Value {
                 }
             },
             {
+                "name": "cargo_clippy",
+                "description": "Run `cargo clippy --message-format=json` in a target Rust repo and return \
+    structured, typed diagnostics instead of raw log text: {ok, diagnostics:[{level,code,file,line,message}], summary}. \
+    `code`, `file` and `line` are always present (`null` when absent) for a stable contract. \
+    `deny_warnings` (default false): when true, warnings also count as errors for the `ok` flag — \
+    enforcement is computed on the summary, so diagnostics keep their true `warning` level. \
+    The command is sync with a configurable timeout (default 120s); a stuck `cargo` is killed \
+    and reported as a typed error. Read-only on the source; only the allow-listed \
+    `cargo clippy` command is ever executed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "Target repo directory (MUST exist and contain a Cargo.toml)."
+                        },
+                        "deny_warnings": {
+                            "type": "boolean",
+                            "description": "Optional: warnings count as errors for `ok` (default false)."
+                        }
+                    },
+                    "required": ["repo_path"]
+                }
+            },
+            {
                 "name": "cargo_test",
                 "description": "Run `cargo test --format=json` in a target Rust repo and return \
     structured, typed test results: {passed, failed, ignored, failures:[{name,message}]}. \
@@ -155,97 +183,12 @@ fn handle_tools_call(id: Option<Value>, params: &Value) -> JsonRpcResponse {
     };
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
-    let result = match name {
-        "cargo_check" => tool_cargo_check(&args),
-        "cargo_build" => tool_cargo_build(&args),
-        "cargo_test" => tool_cargo_test(&args),
-        other => Err(format!("unknown tool: {other}")),
-    };
+    let result = run_tool(name, &args);
 
     match result {
         Ok(outcome) => JsonRpcResponse::ok(id, tool_json_result(&outcome)),
         Err(msg) => JsonRpcResponse::ok(id, tool_error_result(&msg)),
     }
-}
-
-/// Run the `cargo_check` tool and return its typed outcome as JSON.
-///
-/// Esegue il tool `cargo_check` e ritorna l'esito tipato come JSON.
-fn tool_cargo_check(args: &Value) -> Result<Value, String> {
-    let repo_path = require_str(args, "repo_path")?;
-    let crate_name = args.get("crate").and_then(Value::as_str).map(String::from);
-    let workspace = args
-        .get("workspace")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let check_args = CargoCheckArgs {
-        repo_path: repo_path.into(),
-        crate_name,
-        workspace,
-        timeout: None, // default 120s; per-call override is a later micro-task
-    };
-
-    let outcome = cargo_check(&check_args).map_err(|e| format!("{e:#}"))?;
-    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
-}
-
-/// Run the `cargo_build` tool and return its typed outcome as JSON.
-///
-/// Esegue il tool `cargo_build` e ritorna l'esito tipato come JSON.
-fn tool_cargo_build(args: &Value) -> Result<Value, String> {
-    let repo_path = require_str(args, "repo_path")?;
-    let release = args
-        .get("release")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let features = args
-        .get("features")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect::<Vec<String>>()
-        })
-        .unwrap_or_default();
-
-    let build_args = CargoBuildArgs {
-        repo_path: repo_path.into(),
-        release,
-        features,
-        timeout: None, // default 120s; per-call override is a later micro-task
-    };
-
-    let outcome = cargo_build(&build_args).map_err(|e| format!("{e:#}"))?;
-    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
-}
-
-/// Run the `cargo_test` tool and return its typed outcome as JSON.
-///
-/// Esegue il tool `cargo_test` e ritorna l'esito tipato come JSON.
-fn tool_cargo_test(args: &Value) -> Result<Value, String> {
-    let repo_path = require_str(args, "repo_path")?;
-    let crate_name = args.get("crate").and_then(Value::as_str).map(String::from);
-    let filter = args.get("filter").and_then(Value::as_str).map(String::from);
-
-    let test_args = CargoTestArgs {
-        repo_path: repo_path.into(),
-        crate_name,
-        filter,
-        timeout: None, // default 120s; per-call override is a later micro-task
-    };
-
-    let outcome = cargo_test(&test_args).map_err(|e| format!("{e:#}"))?;
-    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
-}
-
-/// Require a string argument, returning a readable error when absent.
-fn require_str(args: &Value, key: &str) -> Result<String, String> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("missing required argument '{key}'"))
 }
 
 /// MCP `tools/call` success payload: structured JSON in a text content block.

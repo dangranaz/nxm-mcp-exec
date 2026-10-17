@@ -13,6 +13,7 @@
 //! righe di log in formato umano.
 
 pub mod cargo_runner;
+pub mod clippy_runner;
 pub mod nextest_runner;
 pub mod parser;
 pub mod runner;
@@ -20,6 +21,7 @@ pub mod test_parser;
 pub mod test_runner;
 
 pub use cargo_runner::{is_allowed_subcommand, run_cargo, wait_with_timeout, DEFAULT_TIMEOUT};
+pub use clippy_runner::{cargo_clippy, ClippyArgs};
 pub use parser::{parse_cargo_stream, CheckOutcome, Diagnostic, Summary};
 pub use runner::{cargo_check, CargoCheckArgs};
 pub use test_parser::{parse_libtest_stream, TestFailure, TestOutcome};

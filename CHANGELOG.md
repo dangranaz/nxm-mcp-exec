@@ -6,6 +6,27 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 ## [Unreleased]
 
 ### Added
+- **Tool `cargo_clippy`** (`work/exec-04-cargo-clippy`).
+  - `clippy` added to the allow-list alongside `check`, `build`, `test` and
+    `nextest`; `tools/list` advertises `cargo_clippy` with schema
+    `{repo_path(req), deny_warnings?}`.
+  - New `exec::clippy_runner::cargo_clippy` runs `cargo clippy
+    --message-format=json` (argv-only, no shell) and reuses
+    `exec::parser::parse_cargo_stream` — same
+    `{ok, diagnostics:[{level,code,file,line,message}], summary}` schema, with
+    clippy lint names in `code` (e.g. `clippy::assertions_on_constants`).
+  - `deny_warnings` (default false): warnings count as errors for the `ok`
+    flag. Enforcement is computed on the parsed summary, NOT via
+    `-- -D warnings`, so diagnostics keep their true `warning` level (denying
+    via argv would re-emit every lint as `error`, destroying the severity
+    information the agent needs). Documented in the tool description.
+  - Handler split (≤300-lines rule): tool implementations (argument parsing
+    + invocation) moved from `src/handler.rs` to new `src/tools.rs`
+    (`handler::dispatch` routes via `tools::run_tool`); `tools/list` schema
+    stays in `handler.rs` (the public tool contract).
+  - Tests: `tests/clippy_handler_tests.rs` (tool advertisement + schema,
+    integration on a real lint fixture, `deny_warnings` flip with mutation
+    check, clean repo) + allow-list coverage in `tests/handler_tests.rs`.
 - **Scaffold + `cargo_check` tracer-bullet** (`work/exec-01-scaffold-cargo-check`).
 - **Tool `cargo_build`** (`work/exec-02-cargo-build`).
   - New `exec::runner::run_cargo` shared by `cargo_check` and `cargo_build`;
