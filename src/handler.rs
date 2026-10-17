@@ -143,6 +143,24 @@ pub fn tools_list_result() -> Value {
                 }
             },
             {
+                "name": "cargo_fmt_check",
+                "description": "Run `cargo fmt -- --check -l` in a target Rust repo and return \
+    {ok, offending_files}: `ok` is true when the repo is already formatted, \
+    otherwise false with the list of files rustfmt would rewrite. Read-only: \
+    `--check` never modifies the target files. Only the allow-listed \
+    `cargo fmt` command is ever executed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "Target repo directory (MUST exist and contain a Cargo.toml)."
+                        }
+                    },
+                    "required": ["repo_path"]
+                }
+            },
+            {
                 "name": "cargo_test",
                 "description": "Run `cargo test --format=json` in a target Rust repo and return \
     structured, typed test results: {passed, failed, ignored, failures:[{name,message}]}. \

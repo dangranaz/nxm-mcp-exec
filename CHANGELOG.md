@@ -27,6 +27,21 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
   - Tests: `tests/clippy_handler_tests.rs` (tool advertisement + schema,
     integration on a real lint fixture, `deny_warnings` flip with mutation
     check, clean repo) + allow-list coverage in `tests/handler_tests.rs`.
+- **Tool `cargo_fmt_check`** (`work/exec-05-cargo-fmt-check`).
+  - `fmt` added to the allow-list alongside `check`, `build`, `test`,
+    `nextest` and `clippy`; `tools/list` advertises `cargo_fmt_check` with
+    schema `{repo_path(req)}`.
+  - New `exec::fmt_runner::cargo_fmt_check` runs `cargo fmt -- --check -l`
+    (argv-only, no shell, read-only: `--check` never rewrites files). `ok` is
+    derived from the exit code; `offending_files` are the file names rustfmt
+    reports via `-l` (one per line). The diff content is never parsed — only
+    file names + exit code. A new pure parser `exec::fmt_runner::parse_fmt_output`
+    maps output → `{ok, offending_files}` and is covered by unit tests.
+  - Tests: `tests/fmt_handler_tests.rs` (parser pure on fixture output,
+    tool advertisement + schema, integration on a real formatted repo
+    `ok=true`, integration on a real unformatted repo `ok=false` with file
+    listed, read-only mutation check proving the fixture file is untouched).
+
 - **Scaffold + `cargo_check` tracer-bullet** (`work/exec-01-scaffold-cargo-check`).
 - **Tool `cargo_build`** (`work/exec-02-cargo-build`).
   - New `exec::runner::run_cargo` shared by `cargo_check` and `cargo_build`;

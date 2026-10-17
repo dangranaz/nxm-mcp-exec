@@ -16,6 +16,7 @@
 use serde_json::Value;
 
 use crate::exec::clippy_runner::{cargo_clippy, ClippyArgs};
+use crate::exec::fmt_runner::{cargo_fmt_check, FmtArgs};
 use crate::exec::runner::{cargo_build, cargo_check, CargoBuildArgs, CargoCheckArgs};
 use crate::exec::test_runner::{cargo_test, CargoTestArgs};
 
@@ -39,8 +40,34 @@ pub fn run_tool(name: &str, args: &Value) -> Result<Value, String> {
         "cargo_build" => tool_cargo_build(args),
         "cargo_test" => tool_cargo_test(args),
         "cargo_clippy" => tool_cargo_clippy(args),
+        "cargo_fmt_check" => tool_cargo_fmt_check(args),
         other => Err(format!("unknown tool: {other}")),
     }
+}
+
+/// Run the `cargo_fmt_check` tool and return its typed outcome as JSON.
+///
+/// Esegue il tool `cargo_fmt_check` e ritorna l'esito tipato come JSON.
+///
+/// The outcome is `{ok, offending_files}`: `ok == true` when the target repo
+/// is already formatted, otherwise `ok == false` with the list of files that
+/// `cargo fmt --check` would rewrite. The command is read-only: it never
+/// modifies the target files.
+///
+/// L'esito è `{ok, offending_files}`: `ok == true` quando il repo target è
+/// già formattato, altrimenti `ok == false` con l'elenco dei file che
+/// `cargo fmt --check` riscriverebbe. Il comando è read-only: non modifica
+/// mai i file target.
+fn tool_cargo_fmt_check(args: &Value) -> Result<Value, String> {
+    let repo_path = require_str(args, "repo_path")?;
+
+    let fmt_args = FmtArgs {
+        repo_path: repo_path.into(),
+        timeout: None, // default 120s; per-call override is a later micro-task
+    };
+
+    let outcome = cargo_fmt_check(&fmt_args).map_err(|e| format!("{e:#}"))?;
+    serde_json::to_value(&outcome).map_err(|e| format!("failed to serialize outcome: {e}"))
 }
 
 /// Run the `cargo_check` tool and return its typed outcome as JSON.

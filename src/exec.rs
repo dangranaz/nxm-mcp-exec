@@ -14,6 +14,7 @@
 
 pub mod cargo_runner;
 pub mod clippy_runner;
+pub mod fmt_runner;
 pub mod nextest_runner;
 pub mod parser;
 pub mod runner;
@@ -22,6 +23,7 @@ pub mod test_runner;
 
 pub use cargo_runner::{is_allowed_subcommand, run_cargo, wait_with_timeout, DEFAULT_TIMEOUT};
 pub use clippy_runner::{cargo_clippy, ClippyArgs};
+pub use fmt_runner::{cargo_fmt_check, parse_fmt_output, FmtArgs, FmtOutcome};
 pub use nextest_runner::{nextest_command_spec, run_nextest, NextestCommandSpec};
 pub use parser::{parse_cargo_stream, CheckOutcome, Diagnostic, Summary};
 pub use runner::{cargo_check, CargoCheckArgs};

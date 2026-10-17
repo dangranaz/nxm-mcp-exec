@@ -65,7 +65,7 @@ pub fn cargo_bin() -> String {
 pub fn is_allowed_subcommand(subcommand: &str) -> bool {
     let allowed = matches!(
         subcommand,
-        "check" | "build" | "test" | "nextest" | "clippy"
+        "check" | "build" | "test" | "nextest" | "clippy" | "fmt"
     );
     tracing::debug!(target: "nxm::exec::cargo_runner", subcommand, allowed, "checked allow-listed subcommand");
     allowed
