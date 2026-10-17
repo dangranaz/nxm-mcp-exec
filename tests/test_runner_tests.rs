@@ -1,18 +1,34 @@
-//! Tests for `cargo_test` tool wiring and `exec::test_runner`.
+//! Tests for `cargo_test` tool wiring and graceful behavior in the handler.
 //!
-//! Test per il cablaggio del tool `cargo_test` e per `exec::test_runner`.
+//! Test per il cablaggio del tool `cargo_test` e per il comportamento grazioso
+//! nell'handler.
 //!
-//! I test di integrazione green/red/filter via nextest skipparono esplicitamente
-//! (con messaggio chiaro) quando `cargo-nextest` non è installato, invece di
-//! essere marcati `#[ignore]` incondizionato.
+//! I test d'integrazione green/red/filter via nextest ESEGUONO nextest reale
+//! e vivono in `tests/nextest_tests.rs` (con il prerequisito ambientale
+//! obbligatorio di cargo-nextest). Qui resta lo skip grazioso per il caso
+//! "nessun backend disponibile", che preserva exec-03b.
+//!
+//! I test che mutano le variabili d'ambiente (NXM_CARGO, PATH) prendono il
+//! lock condiviso: i test Rust girano in thread paralleli e l'env è
+//! per-processo.
 
 use std::env;
+use std::sync::{Mutex, MutexGuard};
 
-use nxm_mcp_exec::exec::test_runner::cargo_nextest_available;
 use nxm_mcp_exec::handler::{dispatch, tools_list_result};
 use nxm_mcp_exec::protocol::JsonRpcRequest;
 use serde_json::{json, Value};
 use tempfile::TempDir;
+
+/// Le variabili di ambiente sono per-processo: i test che le mutano (NXM_CARGO,
+/// PATH) devono essere sequenziali rispetto ai loro pari. I test Rust girano in
+/// thread paralleli, quindi ogni test che tocca l'env prende questo lock.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// Hold the env mutex for the whole scope of a test touching env vars.
+fn env_guard() -> MutexGuard<'static, ()> {
+    ENV_LOCK.lock().expect("env lock available")
+}
 
 /// Writes a minimal cargo repo with a lib containing the given test code.
 ///
@@ -99,8 +115,15 @@ fn tools_list_advertises_cargo_test() {
 fn cargo_test_graceful_skip_when_no_backend() {
     // Quando nessun backend (nextest né nightly JSON) è disponibile, cargo_test
     // deve restituire un errore tipato e leggibile invece di panificare, appendere
-    // o parsare testo umano.
+    // o parsare testo umano. Poiché nell'ambiente delegato cargo-nextest è
+    // obbligatorio, la "assenza di backend" viene SIMULATA restringendo PATH
+    // (nessun `cargo` spawna) e ripristinando l'ambiente a fine test.
+    let _guard = env_guard();
+
     env::remove_var("NXM_CARGO");
+
+    let old_path = env::var("PATH").ok();
+    env::set_var("PATH", "/usr/bin:/bin");
 
     let dir = TempDir::new().expect("temp dir");
     write_test_repo(&dir, "#[test]\nfn it_works() { assert_eq!(2 + 2, 4); }\n");
@@ -108,152 +131,21 @@ fn cargo_test_graceful_skip_when_no_backend() {
     let req = cargo_test_request(dir.path().to_str().expect("path is utf8"), None, None);
     let resp = dispatch(&req).expect("response");
     let result = resp.result.expect("tool result");
-    assert_eq!(result["isError"], json!(true));
-    let msg = result["content"][0]["text"]
+    let err_text = result["content"][0]["text"]
         .as_str()
-        .expect("content text is a string");
+        .expect("content text is a string")
+        .to_string();
+
+    // Ripristino l'ambiente PRIMA delle asserzioni, per non inquinare i pari.
+    match old_path {
+        Some(p) => env::set_var("PATH", p),
+        None => env::remove_var("PATH"),
+    }
+    drop(_guard);
+
+    assert_eq!(result["isError"], json!(true));
     assert!(
-        msg.contains("backend") || msg.contains("nextest") || msg.contains("nightly"),
-        "error message must mention the missing backend: {msg}"
+        err_text.contains("backend") || err_text.contains("nextest") || err_text.contains("nightly"),
+        "error message must mention the missing backend: {err_text}"
     );
-}
-
-#[test]
-fn cargo_test_graceful_skip_when_nextest_absent() {
-    // Se nextest è assente, il test di integrazione deve skipparsi esplicitamente
-    // con un messaggio chiaro, NON fallire e NON essere #[ignore] incondizionato.
-    if cargo_nextest_available() {
-        eprintln!("skip: cargo-nextest is available; integration test would run");
-        return;
-    }
-    eprintln!("skip: cargo-nextest not available; nextest integration test explicitly skipped");
-}
-
-#[test]
-fn nextest_output_mapping_to_test_outcome() {
-    // Mappatura output nextest machine-readable → TestOutcome (fixture statica,
-    // non richiede nextest installato).
-    use nxm_mcp_exec::exec::test_parser::parse_nextest_stream;
-
-    let stream = r#"{"type":"test","event":"passed","name":"test_foo","kind":"test","duration_ms":10}
-{"type":"test","event":"failed","name":"test_bar","kind":"test","duration_ms":5,"message":"panicked at 'assertion failed', src/lib.rs:42"}
-{"type":"test","event":"ignored","name":"test_baz","kind":"test","reason":"..."}
-{"type":"run","event":"started","name":"demo","kind":"run"}
-{"type":"not-json-at-all"}"#;
-
-    let outcome = parse_nextest_stream(stream);
-    assert_eq!(outcome.passed, 1);
-    assert_eq!(outcome.failed, 1);
-    assert_eq!(outcome.ignored, 1);
-    assert_eq!(outcome.failures.len(), 1);
-    assert_eq!(outcome.failures[0].name, "test_bar");
-    assert_eq!(
-        outcome.failures[0].message,
-        "panicked at 'assertion failed', src/lib.rs:42"
-    );
-}
-
-#[test]
-fn cargo_test_green_repo_via_nextest() {
-    // Integrazione green su stable via nextest. Skip esplicito se nextest
-    // non è disponibile (non #[ignore] incondizionato).
-    if !cargo_nextest_available() {
-        eprintln!("skip: cargo-nextest not available; green integration test explicitly skipped");
-        return;
-    }
-
-    env::set_var("NXM_CARGO", "cargo");
-
-    let dir = TempDir::new().expect("temp dir");
-    write_test_repo(
-        &dir,
-        "#[test]\nfn it_works() { assert_eq!(2 + 2, 4); }\n#[test]\nfn another_ok() { assert!(true); }\n",
-    );
-
-    let req = cargo_test_request(dir.path().to_str().expect("path is utf8"), None, None);
-    let resp = dispatch(&req).expect("response");
-    let result = resp.result.expect("tool result");
-    assert_eq!(result["isError"], json!(false));
-    let sc = &result["structuredContent"];
-    assert_eq!(sc["failed"], json!(0));
-    assert_eq!(sc["passed"], json!(2));
-    assert_eq!(
-        sc["failures"].as_array().expect("failures is array").len(),
-        0
-    );
-
-    env::remove_var("NXM_CARGO");
-}
-
-#[test]
-fn cargo_test_red_repo_via_nextest() {
-    // Integrazione red su stable via nextest. Skip esplicito se nextest
-    // non è disponibile.
-    if !cargo_nextest_available() {
-        eprintln!("skip: cargo-nextest not available; red integration test explicitly skipped");
-        return;
-    }
-
-    env::set_var("NXM_CARGO", "cargo");
-
-    let dir = TempDir::new().expect("temp dir");
-    write_test_repo(
-        &dir,
-        "#[test]\nfn it_fails() { assert_eq!(1, 2); }\n#[test]\nfn it_works() { assert!(true); }\n",
-    );
-
-    let req = cargo_test_request(dir.path().to_str().expect("path is utf8"), None, None);
-    let resp = dispatch(&req).expect("response");
-    let result = resp.result.expect("tool result");
-    assert_eq!(result["isError"], json!(false));
-    let sc = &result["structuredContent"];
-    assert!(sc["failed"].as_u64().expect("failed is a number") >= 1);
-    let failures = sc["failures"].as_array().expect("failures is array");
-    assert!(!failures.is_empty(), "expected at least one failure");
-    let failure_names: Vec<String> = failures
-        .iter()
-        .filter_map(|f| f["name"].as_str().map(String::from))
-        .collect();
-    assert!(
-        failure_names.iter().any(|n| n == "it_fails"),
-        "failures must contain the failing test name: {failure_names:?}"
-    );
-
-    env::remove_var("NXM_CARGO");
-}
-
-#[test]
-fn cargo_test_filter_applied_via_nextest() {
-    // Filtro applicato via nextest. Skip esplicito se nextest non è disponibile.
-    if !cargo_nextest_available() {
-        eprintln!("skip: cargo-nextest not available; filter integration test explicitly skipped");
-        return;
-    }
-
-    env::set_var("NXM_CARGO", "cargo");
-
-    let dir = TempDir::new().expect("temp dir");
-    write_test_repo(
-        &dir,
-        "#[test]\nfn alpha_test() { assert!(true); }\n#[test]\nfn beta_test() { assert!(true); }\n",
-    );
-
-    let req = cargo_test_request(
-        dir.path().to_str().expect("path is utf8"),
-        None,
-        Some("alpha"),
-    );
-    let resp = dispatch(&req).expect("response");
-    let result = resp.result.expect("tool result");
-    assert_eq!(result["isError"], json!(false));
-    let sc = &result["structuredContent"];
-    assert_eq!(sc["failed"], json!(0));
-    // Con il filtro `alpha`, solo `alpha_test` dovrebbe eseguirsi e passare.
-    assert_eq!(sc["passed"], json!(1));
-    assert_eq!(
-        sc["failures"].as_array().expect("failures is array").len(),
-        0
-    );
-
-    env::remove_var("NXM_CARGO");
 }

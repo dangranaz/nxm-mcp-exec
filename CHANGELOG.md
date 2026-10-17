@@ -47,19 +47,39 @@ on [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
     empty stream.
 - **`cargo-nextest` backend for `cargo_test`** (`work/exec-03c-cargo-test-nextest`).
   - `nextest` added to the allow-list alongside `check`, `build` and `test`.
-  - New `exec::test_parser::parse_nextest_stream` for nextest `--format json`
-    output; defensive parsing of `{passed, failed, ignored}` events and failure
-    messages; `parse_libtest_stream` untouched.
-  - Backend selection strategy: `cargo-nextest` if available
-    (`cargo nextest run --format json`); else nightly libtest JSON (exec-03b
-    path); else typed graceful skip error (no panic, no hang, no human text).
-  - `cargo_test` parses stdout regardless of exit status (nextest exits 1 on
+  - Backend selection strategy: `cargo-nextest` if available (stable,
+    `libtest-json` machine-readable stream); else nightly libtest JSON
+    (exec-03b path); else typed graceful skip error (no panic, no hang, no
+    human text).
+  - **Fix (exec-03c-fix, 2026-10-17): real nextest invocation.** The previous
+    invocation (`cargo nextest run -- --format=json`, flag passed AFTER `--`) was
+    wrong and produced an empty stdout even with nextest installed; `--format=json`
+    does not exist in nextest. The correct invocation is
+    `cargo nextest run --message-format libtest-json` (a nextest-level flag,
+    BEFORE any positional filter) with the mandatory experimental gate
+    `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1` set in the nextest process env. The
+    command is now built by the pure function
+    `exec::nextest_runner::nextest_command_spec` (argv+env, unit-tested without
+    spawning) and executed by `exec::nextest_runner::run_nextest`.
+  - **Parser de-duplication.** Empirically verified against real nextest
+    0.9.148 output: `--message-format libtest-json` emits the SAME libtest
+    schema (`event: "ok"|"failed"|"ignored"`, FQCN names
+    `<crate>::<lib>$<test>`, failure message in the `stdout` field). The
+    redundant `parse_nextest_stream` (built on an invented
+    `event:"passed"` schema) was removed; consumption goes through the existing
+    `parse_libtest_stream`. The old static fixture was invented and the new one
+    is captured verbatim from real output.
+  - **Integration tests run REAL nextest (no skip):** green/red/filter tests in
+    `tests/nextest_tests.rs` require cargo-nextest installed
+    (`cargo install cargo-nextest --locked`, not a `Cargo.toml` dependency) and
+    fail — instead of silently skipping — when the tool is present but the
+    invocation is wrong. `cargo_nextest_must_be_available_in_this_environment`
+    pins the environmental prerequisite. The graceful "no backend available"
+    skip (exec-03b) is preserved and simulated by restricting `PATH`.
+  - `cargo_test` parses stdout regardless of exit status (nextest exits non-zero on
     test failures but still emits JSON); empty stdout → typed error.
   - `tools/list` advertises `cargo_test` with schema
     `{repo_path(req), crate?, filter?}`.
-  - Tests in `tests/test_runner_tests.rs`: nextest output mapping fixture,
-    graceful skip when no backend available, green/red/filter integration tests
-    with explicit skip when nextest is absent.
 
 ### Changed
 - **`exec::runner` — sync timeout on `cargo check`** (`work/exec-01b-cargo-check-review-fixes`).

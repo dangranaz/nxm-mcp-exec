@@ -11,9 +11,12 @@
 //! Parser difensivo: righe non-JSON/vuote saltate, campi sconosciuti ignorati,
 //! nessun panic sul drift di formato.
 //!
-//! Il formato è nightly/unstable: questo task si occupa solo del parsing di
-//! uno stream dato come input (fixture). La gestione nightly/stabilità è
-//! delegata a `exec-03b`.
+//! Il formato è nightly/unstable e rientra nella famiglia libtest: lo stesso
+//! parser consuma anche lo stream `libtest-json` di cargo-nextest
+//! (stable, sperimentale; gate `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1`).
+//! The format is nightly/unstable and belongs to the libtest family: the same
+//! parser also consumes cargo-nextest's `libtest-json` stream
+//! (stable, experimental; gate `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -182,101 +185,14 @@ fn extract_failure_message(event: &Value) -> String {
         .to_string()
 }
 
-/// Analizza uno stream JSON di nextest in un [`TestOutcome`].
-///
-/// Parses a nextest JSON stream into a [`TestOutcome`].
-///
-/// nextest con `--format json` emette un oggetto JSON per riga. Gli eventi
-/// che ci interessano hanno `"type": "test"` con `"event"` in
-/// `{passed, failed, ignored}` e un campo `name`. Il messaggio di una
-/// failure si trova nel campo `message`.
-///
-/// # Examples
-/// ```
-/// use nxm_mcp_exec::exec::test_parser::parse_nextest_stream;
-/// let stream = r#"{"type":"test","event":"passed","name":"test_foo","kind":"test","duration_ms":10}
-/// {"type":"test","event":"failed","name":"test_bar","kind":"test","duration_ms":5,"message":"panicked at 'assertion failed'"}
-/// {"type":"test","event":"ignored","name":"test_baz","kind":"test","reason":"..."}"#;
-/// let outcome = parse_nextest_stream(stream);
-/// assert_eq!(outcome.passed, 1);
-/// assert_eq!(outcome.failed, 1);
-/// assert_eq!(outcome.ignored, 1);
-/// assert_eq!(outcome.failures[0].name, "test_bar");
-/// assert_eq!(outcome.failures[0].message, "panicked at 'assertion failed'");
-/// ```
-///
-/// Comportamento:
-/// - Un oggetto JSON per riga; righe vuote e non-JSON sono saltate.
-/// - Solo gli eventi `"type": "test"` con `"event"` in `{passed, failed, ignored}`
-///   producono conteggi/failure.
-/// - Altri eventi (es. `"type": "run"`, `"type": "binary"`) sono ignorati.
-/// - Il `message` di una failure è preso dal campo `message` dell'evento.
-pub fn parse_nextest_stream(stream: &str) -> TestOutcome {
-    tracing::debug!(
-        target: "nxm::exec::test_parser",
-        input_len = stream.len(),
-        "parsing nextest JSON stream"
-    );
-
-    let mut passed = 0u32;
-    let mut failed = 0u32;
-    let mut ignored = 0u32;
-    let mut failures = Vec::new();
-
-    for raw in stream.lines() {
-        let line = raw.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let event: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let rtype = event.get("type").and_then(Value::as_str).unwrap_or("");
-        if rtype != "test" {
-            // run, binary, ecc.: ignorati per i conteggi.
-            continue;
-        }
-
-        let event_kind = event.get("event").and_then(Value::as_str).unwrap_or("");
-        let name = event
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-
-        match event_kind {
-            "passed" => passed += 1,
-            "failed" => {
-                failed += 1;
-                let message = event
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                failures.push(TestFailure { name, message });
-            }
-            "ignored" => ignored += 1,
-            _ => continue,
-        }
-    }
-
-    let outcome = TestOutcome {
-        passed,
-        failed,
-        ignored,
-        failures,
-    };
-
-    tracing::debug!(
-        target: "nxm::exec::test_parser",
-        passed = outcome.passed,
-        failed = outcome.failed,
-        ignored = outcome.ignored,
-        failures = outcome.failures.len(),
-        "nextest JSON stream parsed"
-    );
-
-    outcome
-}
+// Nota (exec-03c fix): nextest con `--message-format libtest-json` emette lo
+// STESSO schema libtest (`event: "ok"|"failed"|"ignored"`, nome FQCN
+// `<crate>::<lib>$<test>`, messaggio di fallimento nel campo `stdout`),
+// verificato su output reale di nextest 0.9.148 — un parser `nextest` dedicato
+// era ridondante ed è stato rimosso: il consumo avviene tramite
+// [`parse_libtest_stream`] (vedi `nextest_runner`).
+// (exec-03c fix) nextest with `--message-format libtest-json` emits the SAME
+// libtest schema (`event: "ok"|"failed"|"ignored"`, FQCN name
+// `<crate>::<lib>$<test>`, failure message in the `stdout` field), verified
+// against real nextest 0.9.148 output — a dedicated parser was redundant and
+// was removed: consumption goes through [`parse_libtest_stream`].
